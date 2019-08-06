@@ -1,0 +1,61 @@
+#!/bin/bash
+sudo yum update -y
+sudo amazon-linux-extras install nginx1.12
+rm -f /usr/share/nginx/html/index.html
+rm -f /etc/nginx/nginx.conf
+
+cat << EOF > /etc/nginx/nginx.conf
+user nginx;
+worker_processes auto;
+error_log /var/log/nginx/error.log;
+pid /run/nginx.pid;
+include /usr/share/nginx/modules/*.conf;
+events {
+    worker_connections 1024;
+}
+http {
+    log_format  main  '$remote_addr - $remote_user [$time_local] "$request" '
+                               '$status $body_bytes_sent "$http_referer" '
+                               '"$http_user_agent" "$http_x_forwarded_for"';
+    access_log  /var/log/nginx/access.log  main;
+
+    sendfile            on;
+    tcp_nopush          on;
+    tcp_nodelay         on;
+    keepalive_timeout   65;
+    types_hash_max_size 2048;
+
+    include             /etc/nginx/mime.types;
+    default_type        application/octet-stream;
+
+    include /etc/nginx/conf.d/*.conf;
+}
+EOF
+cat << EOF > /etc/nginx/conf.d/site.conf
+server {
+        listen       80 default_server;
+        server_name  _;
+        include /etc/nginx/default.d/*.conf;
+        location / {
+            proxy_set_header Host 'nginxdatatflash8.s3.amazonaws.com'; 
+            proxy_set_header Authorization ''; 
+            proxy_hide_header x-amz-id-2; 
+            proxy_hide_header x-amz-request-id; 
+            proxy_hide_header Set-Cookie; 
+            proxy_ignore_headers "Set-Cookie"; 
+            proxy_intercept_errors on; 
+            proxy_pass https://nginxdatatflash8.s3.amazonaws.com/index.html;
+            expires 1y; 
+            log_not_found off;
+        }
+
+        error_page 404 /404.html;
+            location = /40x.html {
+        }
+        error_page 500 502 503 504 /50x.html;
+            location = /50x.html {
+        }
+    }
+EOF
+sudo systemctl restart nginx.service
+sudo chkconfig nginx on
